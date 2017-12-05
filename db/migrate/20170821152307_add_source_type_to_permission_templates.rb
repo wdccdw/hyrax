@@ -8,17 +8,31 @@ class AddSourceTypeToPermissionTemplates < ActiveRecord::Migration[4.2]
     # Unfortunately, renaming the dependent column is also going to silently remove that field from
     # this index. So we'll drop it for now and recreate when the migration is done
     remove_index :permission_template_accesses, name: 'uk_permission_template_accesses'
+    # Rename the table to temp so that we can recreate it with the FKC later
+    rename_table :permission_template_accesses, :permission_template_accesses_temp
   end
 
   # Recreate the permission_template_accesses table with the FKC.
   def sqlite_restore_fkc
-    # First recreate the original column 'permission_template_id' that references permission_template
-    change_table :permission_template_accesses do |t|
+    # First recreate the original table, restoring the FKC. Note: This does not account for any
+    # changes that an application which implements hyrax may have performed. I'm assuming there
+    # is low risk here, but if we need to deal with that then we'll need a more robust way to copy
+    # the existing schema from the temp table. I couldn't find a convenient way to do this with
+    # sqlite adapter.
+    create_table :permission_template_accesses do |t|
       t.references :permission_template, foreign_key: true
+      t.string :agent_type
+      t.string :agent_id
+      t.string :access
+      t.timestamps
     end
-    # Copy the preserved data from the temp column and drop it
-    connection.execute("UPDATE permission_template_accesses SET permission_template_id=permission_template_id_temp;")
-    remove_column :permission_template_accesses, :permission_template_id_temp
+
+    # Copy the preserved data from the temp table then drop it
+    copy_data_query = "INSERT INTO permission_template_accesses(agent_type, agent_id, access, created_at, updated_at, permission_template_id)" \
+                      "SELECT agent_type, agent_id, access, created_at, updated_at, permission_template_id_temp from permission_template_accesses_temp"
+    connection.execute copy_data_query
+    drop_table :permission_template_accesses_temp
+
     # Recreate the index we lost. Pulled this from 20171117153051_add_unique_constraint_to_permission_template_accesses
     add_index :permission_template_accesses,
               [:permission_template_id, :agent_id, :agent_type, :access],
