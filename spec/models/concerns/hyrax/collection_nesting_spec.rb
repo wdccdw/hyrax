@@ -22,13 +22,7 @@ RSpec.describe Hyrax::CollectionNesting do
     end
 
     let(:user) { create(:user) }
-    let!(:collection) { create(:collection, collection_type_settings: [:nestable]) }
-    let!(:child_collection) { create(:collection, collection_type_settings: [:nestable]) }
-
-    before do
-      Hyrax::Collections::NestedCollectionPersistenceService.persist_nested_collection_for(parent: collection, child: child_collection)
-    end
-
+    let(:collection) { create(:collection, collection_type_settings: [:nestable]) }
     subject { klass.new.tap { |obj| obj.id = collection.id } }
 
     it { is_expected.to callback(:update_nested_collection_relationship_indices).after(:update_index) }
@@ -37,26 +31,37 @@ RSpec.describe Hyrax::CollectionNesting do
     it { is_expected.to respond_to(:update_child_nested_collection_relationship_indices) }
     it { is_expected.to respond_to(:use_nested_reindexing?) }
 
-    context 'after_update_index callback' do
-      describe '#update_nested_collection_relationship_indices' do
-        it 'will call Hyrax.config.nested_relationship_reindexer' do
-          expect(Hyrax.config.nested_relationship_reindexer).to receive(:call).with(id: subject.id).and_call_original
-          subject.update_nested_collection_relationship_indices
-        end
+    describe '#update_nested_collection_relationship_indices' do
+      it 'will enqueue a job to index the collection later' do
+        expect(IndexNestedCollectionJob).to receive(:perform_later).with(collection.id)
+        subject.update_nested_collection_relationship_indices
       end
     end
 
-    context 'after_destroy callback' do
+    context 'with children' do
+      let(:child_collections) {[
+        create(:collection, collection_type_settings: [:nestable]),
+        create(:collection, collection_type_settings: [:nestable])
+      ]}
+
+      before do
+        child_collections.each do |child|
+          Hyrax::Collections::NestedCollectionPersistenceService.persist_nested_collection_for(parent: collection, child: child)
+        end
+      end
+
       describe '#update_child_nested_collection_relationship_indices' do
-        it 'will call Hyrax.config.nested_relationship_reindexer' do
-          expect(Hyrax.config.nested_relationship_reindexer).to receive(:call).with(id: child_collection.id).and_call_original
+        it 'will enqueue a job to reindex all child collections later' do
+          child_collections.each do |child|
+            expect(IndexNestedCollectionJob).to receive(:perform_later).with(child.id)
+          end
           subject.update_child_nested_collection_relationship_indices
         end
       end
 
       describe '#find_children_of' do
         it 'will return an array containing the child collection ids' do
-          expect(subject.find_children_of(destroyed_id: collection.id).first.id).to eq(child_collection.id)
+          expect(subject.find_children_of(destroyed_id: collection.id).map(&:id)).to match_array(child_collections.map(&:id))
         end
       end
     end

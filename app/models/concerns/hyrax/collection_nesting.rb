@@ -15,13 +15,13 @@ module Hyrax
       after_destroy :update_child_nested_collection_relationship_indices
 
       def update_nested_collection_relationship_indices
-        Hyrax.config.nested_relationship_reindexer.call(id: id)
+        IndexNestedCollectionJob.perform_later(id)
       end
 
       def update_child_nested_collection_relationship_indices
         children = find_children_of(destroyed_id: id)
         children.each do |child|
-          Hyrax.config.nested_relationship_reindexer.call(id: child.id)
+          IndexNestedCollectionJob.perform_later(child.id)
         end
       end
     end
