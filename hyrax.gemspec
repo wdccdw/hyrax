@@ -107,7 +107,7 @@ SUMMARY
   #
   # simple_form 3.5.1 broke hydra-editor for certain model types;
   #   see: https://github.com/plataformatec/simple_form/issues/1549
-  #spec.add_dependency 'simple_form', '~> 3.5.0'
-  spec.add_dependency 'simple_form', '>= 3.2', '<= 4.1.0', '< 5.0'
+  spec.add_dependency 'simple_form', '~> 4.0.0'
+  #spec.add_dependency 'simple_form', '>= 3.2', '<= 4.1.0', '< 5.0'
 
 end
